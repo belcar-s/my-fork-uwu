@@ -1,23 +1,37 @@
 package me.flashyreese.mods.sodiumextra.client;
 
-import me.flashyreese.mods.sodiumextra.common.util.EvictingQueue;
-import me.flashyreese.mods.sodiumextra.mixin.gui.MinecraftClientAccessor;
+import net.minecraft.util.MetricsData;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
-
-import java.util.Comparator;
-import java.util.Queue;
 
 public class ClientTickHandler {
     private int averageFps, lowestFps, highestFps;
-    private final Queue<Integer> fpsQueue = new EvictingQueue<>(200);
 
     public void onClientInitialize() {
         ClientTickEvents.START_CLIENT_TICK.register(minecraftClient -> {
-            int currentFPS = MinecraftClientAccessor.getCurrentFPS();
-            this.fpsQueue.add(currentFPS);
-            this.averageFps = (int) this.fpsQueue.stream().mapToInt(Integer::intValue).average().orElse(0);
-            this.lowestFps = this.fpsQueue.stream().min(Comparator.comparingInt(e -> e)).orElse(0);
-            this.highestFps = this.fpsQueue.stream().max(Comparator.comparingInt(e -> e)).orElse(0);
+            MetricsData metricsData = minecraftClient.getMetricsData();
+            long[] ls = metricsData.getSamples();
+
+            int width = minecraftClient.getWindow().getScaledWidth() / 2;
+
+            int startIndex = metricsData.getStartIndex();
+            int considered = Math.min(ls.length, width);
+
+            int skipped = ls.length - considered;
+
+            int sum = 0;
+            int min = Integer.MAX_VALUE;
+            int max = Integer.MIN_VALUE;
+
+            for (int i = 0; i < considered; ++i) {
+                int sample = (int)(ls[metricsData.wrapIndex(startIndex + skipped + i)] / 1_000_000L);
+                min = Math.min(min, sample);
+                max = Math.max(max, sample);
+                sum += sample;
+            }
+
+            this.lowestFps = (int) (max == 0 ? 0 : 1000 / (float)(max));
+            this.highestFps = (int) (min == 0 ? 0 : 1000 / (float)(min));
+            this.averageFps = (int) (sum == 0 ? 0 : 1000 / (sum / (float)(considered)));
         });
     }
 
